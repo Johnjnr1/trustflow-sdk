@@ -171,6 +171,13 @@ describe('TrustFlowClient', () => {
 
       expect(client.getNetworkPassphrase()).toContain('Public Global Stellar Network');
     });
+
+    it('rejects an empty explicit passphrase during initialization', () => {
+      expect(() => new TrustFlowClient({
+        contractId: mockContractId,
+        networkPassphrase: '   ',
+      })).toThrow(TrustFlowError);
+    });
   });
 
   describe('getAuthHeaders', () => {

@@ -1,8 +1,9 @@
 import type { HttpInterceptors } from '../utils/interceptors';
+import type { StellarNetwork } from '../stellar/network';
 
 export interface ContractConfig {
   contractId: string;
-  network: 'TESTNET' | 'MAINNET';
+  network: StellarNetwork;
   rpcUrl: string;
   networkPassphrase: string;
   apiBaseUrl?: string;

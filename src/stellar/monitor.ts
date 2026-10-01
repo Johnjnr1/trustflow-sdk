@@ -8,7 +8,7 @@ import { logger } from '../utils/logger';
 export interface AccountMonitorConfig {
   /** The Stellar public key address (G...) to monitor. */
   address: string;
-  /** Network to query against ('TESTNET' | 'MAINNET'). Defaults to 'TESTNET'. */
+  /** Network to query against. Defaults to 'TESTNET'. */
   network?: StellarNetwork;
   /** Minimum balance threshold in XLM below which alerts are emitted. Defaults to 10 XLM. */
   minBalanceXLM?: string | number;

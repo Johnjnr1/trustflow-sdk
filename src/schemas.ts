@@ -36,7 +36,7 @@ export const ContractIdSchema = z
 export const StroopsSchema = z.bigint().positive('Amount must be positive');
 
 /** Validates a supported TrustFlow network name. */
-export const NetworkSchema = z.enum(['MAINNET', 'TESTNET']);
+export const NetworkSchema = z.enum(['MAINNET', 'TESTNET', 'FUTURENET', 'LOCALNET']);
 
 /** Validates a CID string (CIDv0 or CIDv1). */
 export const CidSchema = z.string().refine(isValidCid, {
@@ -97,7 +97,10 @@ export const ClientConfigSchema = z.object({
   contractId: ContractIdSchema,
   rpcUrl: z.string().url('RPC URL must be a valid URL').optional(),
   horizonUrl: z.string().url('Horizon URL must be a valid URL').optional(),
-  networkPassphrase: z.string().optional(),
+  networkPassphrase: z
+    .string()
+    .refine((value) => value.trim().length > 0, 'Network passphrase must not be empty')
+    .optional(),
   apiBaseUrl: z.string().url('API base URL must be a valid URL').optional(),
   apiKey: z.string().optional(),
   apiVersion: z.string().optional(),

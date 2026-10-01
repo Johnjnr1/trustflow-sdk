@@ -195,6 +195,9 @@ describe('TrustFlowClient.connect retry behaviour', () => {
     jest.spyOn(client, 'getServer').mockReturnValue({
       ledgers: () => ({ limit: () => ({ call }) }),
     } as unknown as ReturnType<TrustFlowClient['getServer']>);
+    jest.spyOn(client, 'getSorobanServer').mockReturnValue({
+      getHealth: jest.fn().mockResolvedValue({ status: 'healthy' }),
+    } as unknown as ReturnType<TrustFlowClient['getSorobanServer']>);
   }
 
   it('retries a transient ledger lookup and then connects', async () => {
@@ -225,6 +228,30 @@ describe('TrustFlowClient.connect retry behaviour', () => {
 
     await expect(client.connect()).rejects.toMatchObject({ code: 'CONNECTION_ERROR' });
     expect(call).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects startup when Soroban RPC is reachable but unhealthy', async () => {
+    const client = new TrustFlowClient({ contractId: CONTRACT, retry: FAST });
+    stubLedgers(client, jest.fn().mockResolvedValue({ records: [] }));
+    jest.spyOn(client, 'getSorobanServer').mockReturnValue({
+      getHealth: jest.fn().mockResolvedValue({ status: 'unhealthy' }),
+    } as unknown as ReturnType<TrustFlowClient['getSorobanServer']>);
+
+    await expect(client.connect()).rejects.toMatchObject({ code: 'CONNECTION_ERROR' });
+    expect(client.isConnected()).toBe(false);
+  });
+
+  it('rejects startup when Soroban RPC health cannot be reached', async () => {
+    const client = new TrustFlowClient({ contractId: CONTRACT, retry: FAST });
+    stubLedgers(client, jest.fn().mockResolvedValue({ records: [] }));
+    const getHealth = jest.fn().mockRejectedValue(new TypeError('failed to fetch'));
+    jest.spyOn(client, 'getSorobanServer').mockReturnValue({
+      getHealth,
+    } as unknown as ReturnType<TrustFlowClient['getSorobanServer']>);
+
+    await expect(client.connect()).rejects.toMatchObject({ code: 'CONNECTION_ERROR' });
+    expect(getHealth).toHaveBeenCalledTimes(3);
+    expect(client.isConnected()).toBe(false);
   });
 
   it('surfaces TIMEOUT when the client-wide timeoutMs deadline fires', async () => {

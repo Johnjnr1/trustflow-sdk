@@ -17,6 +17,7 @@ import { AccountManager } from './accounts/manager';
 import type { AccountContext, AccountOptions, AddAccountInput } from './accounts/types';
 import { assertStellarAddress } from './utils/validation';
 import { fetchAccountInfo, type AccountInfo } from './stellar/account';
+import { NETWORK_CONFIGS } from './stellar/network';
 import { withTransientRetry } from './utils/node-retry';
 import {
   assertWebCryptoSupport,
@@ -85,11 +86,15 @@ export class TrustFlowClient {
   private _connected: boolean = false;
   private readonly logger: SDKLogger;
 
-  readonly network: Network;
+  private _network!: Network;
+  get network(): Network { return this._network; }
   readonly contractId: string;
-  readonly rpcUrl: string;
-  readonly horizonUrl: string;
-  readonly networkPassphrase: string;
+  private _rpcUrl!: string;
+  get rpcUrl(): string { return this._rpcUrl; }
+  private _horizonUrl!: string;
+  get horizonUrl(): string { return this._horizonUrl; }
+  private _networkPassphrase!: string;
+  get networkPassphrase(): string { return this._networkPassphrase; }
   readonly apiBaseUrl?: string;
   readonly apiKey?: string;
   readonly version: string = SDK_VERSION;
@@ -114,7 +119,7 @@ export class TrustFlowClient {
    *
    * @param config - Client configuration options
    * @param config.contractId - The Soroban contract ID for TrustFlow escrow
-   * @param config.network - Network type ('TESTNET' or 'MAINNET'), defaults to TESTNET
+    * @param config.network - Target network, defaults to TESTNET
    * @param config.rpcUrl - Optional custom Soroban RPC URL
    * @param config.apiBaseUrl - Optional TrustFlow API base URL for backend integration
    * @param config.apiKey - Optional API key for authenticated requests
@@ -159,11 +164,17 @@ export class TrustFlowClient {
       }
     }
 
-    this.network = config.network ?? DEFAULT_NETWORK;
+    this._network = config.network ?? DEFAULT_NETWORK;
+    if (!NETWORK_CONFIGS[this._network]) {
+      throw new TrustFlowError(`Unsupported network: ${String(this._network)}`, 'INVALID_CONFIG');
+    }
     this.contractId = config.contractId;
-    this.rpcUrl = config.rpcUrl ?? SOROBAN_RPC_URLS[this.network];
-    this.horizonUrl = config.horizonUrl ?? HORIZON_URLS[this.network];
-    this.networkPassphrase = config.networkPassphrase ?? NETWORK_PASSPHRASES[this.network];
+    this._rpcUrl = config.rpcUrl ?? SOROBAN_RPC_URLS[this.network];
+    this._horizonUrl = config.horizonUrl ?? HORIZON_URLS[this.network];
+    this._networkPassphrase = config.networkPassphrase ?? NETWORK_PASSPHRASES[this.network];
+    if (typeof this._networkPassphrase !== 'string' || !this._networkPassphrase.trim()) {
+      throw new TrustFlowError('networkPassphrase must not be empty', 'INVALID_CONFIG');
+    }
     this.apiBaseUrl = config.apiBaseUrl;
     this.apiKey = config.apiKey;
     this.apiVersion = config.apiVersion ?? DEFAULT_API_VERSION;
@@ -388,6 +399,15 @@ export class TrustFlowClient {
         this.retryConfig,
         'horizon.ledgers',
       );
+      const health = await withTransientRetry(
+        () => this.getSorobanServer().getHealth(),
+        { timeoutMs: this.timeoutMs },
+        this.retryConfig,
+        'soroban.health',
+      );
+      if (health.status !== 'healthy') {
+        throw new Error(`Soroban RPC is not healthy: ${health.status}`);
+      }
       this._connected = true;
       this.logger.info('Connected to Stellar network', { network: this.network });
     } catch (error) {
@@ -407,6 +427,21 @@ export class TrustFlowClient {
    */
   isConnected(): boolean {
     return this._connected;
+  }
+
+  /** Switches this client to a preset network and invalidates its connections. */
+  switchNetwork(network: Network): void {
+    const config = NETWORK_CONFIGS[network];
+    if (!config) {
+      throw new TrustFlowError(`Unsupported network: ${String(network)}`, 'INVALID_CONFIG');
+    }
+    this._network = network;
+    this._rpcUrl = config.rpcUrl;
+    this._horizonUrl = config.horizonUrl;
+    this._networkPassphrase = config.passphrase;
+    this.server = new Horizon.Server(this.horizonUrl);
+    this.sorobanServer = undefined;
+    this._connected = false;
   }
 
   async verifyApiCompatibility(): Promise<{ compatible: boolean; serverVersion: string; clientVersion: string }> {

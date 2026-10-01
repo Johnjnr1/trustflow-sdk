@@ -53,7 +53,7 @@ function unfundedAccount(address: string): AccountInfo {
  *   `CONNECTION_ERROR`, or `TIMEOUT` when the deadline fired
  *
  * @param address - Stellar `G...` public key
- * @param network - `'TESTNET'` or `'MAINNET'`
+ * @param network - Stellar network to query
  * @param retry - Optional retry budget; defaults to
  *   {@link import('../utils/node-retry').DEFAULT_NODE_RETRY_CONFIG}
  * @param horizonUrl - Optional Horizon base URL override

@@ -65,5 +65,10 @@ describe("Horizon & Network Config Overrides (#208)", () => {
       horizonUrl: "bad-url",
     });
     expect(invalid.success).toBe(false);
+
+    expect(ClientConfigSchema.safeParse({
+      contractId,
+      networkPassphrase: '   ',
+    }).success).toBe(false);
   });
 });

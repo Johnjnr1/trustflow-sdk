@@ -3,8 +3,9 @@ import type { ApiRetryConfig } from "./utils/http";
 import type { AddAccountInput } from "./accounts/types";
 import type { LogLevel, Logger } from "./utils/logger";
 import type { Horizon, rpc } from "@stellar/stellar-sdk";
+import type { StellarNetwork } from "./stellar/network";
 
-export type Network = "TESTNET" | "MAINNET";
+export type Network = StellarNetwork;
 
 /** Options for opt-in caching of Horizon balance lookups. */
 export interface BalanceCacheConfig {
@@ -24,7 +25,7 @@ export interface LoggingConfig {
 
 /** Configuration options for initializing a TrustFlowClient instance. */
 export interface ClientConfig {
-  /** Target network ("TESTNET" or "MAINNET"). Defaults to "TESTNET". */
+  /** Target network. Defaults to "TESTNET". */
   network?: Network;
   /** Soroban contract ID for the TrustFlow protocol. */
   contractId: string;
