@@ -327,14 +327,17 @@ export class EscrowMonitor {
       }
       this.consecutiveFailures = 0;
 
-      const fresh = events.filter((e) => {
+      const fresh = events.filter(
+        (e): e is ParsedTrustFlowEvent => Boolean(e) && typeof e.type === 'string',
+      );
+      const deduped = fresh.filter((e) => {
         const key = e.pagingToken || e.id;
         if (this.seenSet.has(key)) return false;
         return true;
       });
 
-      if (fresh.length > 0 && this.lastLedger !== undefined) {
-        const minLedger = Math.min(...fresh.map((e) => e.ledger));
+      if (deduped.length > 0 && this.lastLedger !== undefined) {
+        const minLedger = Math.min(...deduped.map((e) => e.ledger));
         if (minLedger > this.lastLedger + 1) {
           this.gapCallback?.({
             reason: 'ledger-discontinuity',
@@ -345,11 +348,11 @@ export class EscrowMonitor {
         }
       }
 
-      if (fresh.length > 0) {
-        this.deliver(fresh);
-        for (const e of fresh) remember(e.pagingToken || e.id);
-        this.lastLedger = Math.max(...fresh.map((e) => e.ledger), this.lastLedger ?? -Infinity);
-        const newest = fresh[fresh.length - 1];
+      if (deduped.length > 0) {
+        this.deliver(deduped);
+        for (const e of deduped) remember(e.pagingToken || e.id);
+        this.lastLedger = Math.max(...deduped.map((e) => e.ledger), this.lastLedger ?? -Infinity);
+        const newest = deduped[deduped.length - 1];
         const nextCursor = newest.pagingToken || newest.id;
         this.lastCursor = nextCursor;
         try {
@@ -358,7 +361,7 @@ export class EscrowMonitor {
           logger.error('Cursor store write failed', error);
         }
         logger.debug('Resilient poll delivered events', {
-          count: fresh.length,
+          count: deduped.length,
           cursor: nextCursor,
         });
       }
@@ -388,8 +391,10 @@ export class EscrowMonitor {
   }
 
   stopPolling(): void {
-    clearInterval(this.pollingInterval);
-    this.pollingInterval = undefined;
+    const pollingInterval = this.pollingInterval;
+    if (pollingInterval) {
+      clearInterval(pollingInterval);
+    }
     this.resilientStopped = true;
     if (this.resilientTimer) {
       clearTimeout(this.resilientTimer);
