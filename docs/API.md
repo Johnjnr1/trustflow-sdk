@@ -669,7 +669,11 @@ callers get a typed, actionable `error.code` (e.g. `ASSEMBLY_ERROR`, `SIMULATION
 - `.buildFeeBump(innerTx, { feeSource, baseFee? })` — wraps a transaction in a fee-bump
   envelope
 - `.submit(tx, options?)` — broadcasts a signed transaction and polls for confirmation,
-  retrying transient submission failures with exponential backoff
+  retrying transient submission failures with exponential backoff. Set
+  `submit.feeBump.maxFeeBump` with `feeSource` to automatically wrap a signed inner
+  transaction in progressively higher fee-bump envelopes when confirmation polling times
+  out. Each step reads the latest Soroban RPC p90 inclusion fee and multiplies the previous
+  base fee (default multiplier: 2); `onFeeBump` receives the old/new hashes and fee details.
 - `.run(params)` — convenience method chaining assemble → prepare → sign → submit; when
   submission fails for a fee-related reason (`TRY_AGAIN_LATER`, insufficient fee) and
   `submit.feeBump` is configured, automatically builds, signs, and resubmits a fee-bump
@@ -685,7 +689,15 @@ const result = await pipeline.run({
   sourceAccount: sender.publicKey(),
   operations: [contract.call('release', ...args)],
   signers: [sender],
-  submit: { feeBump: { feeSource: sponsor } },
+  submit: {
+    feeBump: {
+      feeSource: sponsor,
+      maxFeeBump: 3,
+      onFeeBump: ({ hash, baseFee, attempt }) => {
+        console.info(`Fee bump ${attempt}: ${hash} at ${baseFee} stroops`);
+      },
+    },
+  },
 });
 
 if (!result.ok) {

@@ -94,6 +94,33 @@ export interface FeeBumpOptions {
    * fee-bump base fee cover the inner transaction's fee rate.
    */
   baseFee?: string;
+  /**
+   * Maximum number of additional fee-bump envelopes to submit after confirmation
+   * polling times out. Automatic timeout escalation is disabled when omitted.
+   */
+  maxFeeBump?: number;
+  /**
+   * Fee multiplier applied at each timeout escalation step. The first bump
+   * uses the latest RPC p90 inclusion fee times this multiplier; each later
+   * bump increases the previous base fee by the same factor. Defaults to 2.
+   */
+  feeBumpMultiplier?: number;
+  /** Called after a fee-bump envelope is built and signed, before it is submitted. */
+  onFeeBump?: (event: FeeBumpEvent) => void | Promise<void>;
+}
+
+/** Details reported when the pipeline automatically creates a fee-bump envelope. */
+export interface FeeBumpEvent {
+  /** Hash of the envelope that most recently timed out or was fee-rejected. */
+  previousHash: string;
+  /** Hash of the newly created fee-bump envelope. */
+  hash: string;
+  /** Base fee used for the new fee-bump envelope, in stroops. */
+  baseFee: string;
+  /** One-based automatic bump number. */
+  attempt: number;
+  /** Why the escalation was started. */
+  reason: 'confirmation-timeout' | 'fee-rejection';
 }
 
 /** Options controlling submission, on-chain confirmation polling, and fee-bump escalation. */
