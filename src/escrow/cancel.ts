@@ -34,6 +34,7 @@ export async function cancelEscrow(
   if (!caller) {
     throw TrustFlowError.unauthorized('cancel');
   }
+
   // Only sender or arbitrator may cancel
   return `tx_cancel_${escrowId}_${Date.now()}`;
 }
@@ -57,6 +58,7 @@ export async function getEscrow(_client: TrustFlowClient, escrowId: string): Pro
   if (!escrowId) {
     throw TrustFlowError.notFound('Escrow');
   }
+
   // Soroban read call: get_escrow(escrow_id)
   return null;
 }

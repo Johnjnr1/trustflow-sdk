@@ -662,6 +662,89 @@ describe('TransactionPipeline.submit confirmation polling', () => {
     expect(getSpy).toHaveBeenCalledTimes(3);
   });
 
+  it('automatically fee-bumps a timed-out transaction using current Soroban fee stats', async () => {
+    const tx = signedTx();
+    const feeSource = Keypair.random();
+    const sendSpy = jest
+      .spyOn(rpc.Server.prototype, 'sendTransaction')
+      .mockResolvedValueOnce(pending('original'))
+      .mockResolvedValueOnce(pending('bumped'));
+    jest
+      .spyOn(rpc.Server.prototype, 'getTransaction')
+      .mockResolvedValueOnce(txStatus(rpc.Api.GetTransactionStatus.NOT_FOUND))
+      .mockResolvedValueOnce(txStatus(rpc.Api.GetTransactionStatus.SUCCESS, 88));
+    const feeStatsSpy = jest.spyOn(rpc.Server.prototype, 'getFeeStats').mockResolvedValue({
+      latestLedger: 100,
+      inclusionFee: { p90: '500' },
+      sorobanInclusionFee: { p90: '600' },
+    } as unknown as rpc.Api.GetFeeStatsResponse);
+    const notifications: Array<{ hash: string; baseFee: string; attempt: number }> = [];
+
+    const result = await new TransactionPipeline(makeClient()).submit(tx, {
+      maxAttempts: 1,
+      pollAttempts: 1,
+      pollIntervalMs: 1,
+      feeBump: {
+        feeSource,
+        maxFeeBump: 2,
+        onFeeBump: ({ hash, baseFee, attempt }) => notifications.push({ hash, baseFee, attempt }),
+      },
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.data).toMatchObject({ hash: 'bumped', ledger: 88, feeBumped: true });
+    expect(sendSpy).toHaveBeenCalledTimes(2);
+    expect(sendSpy.mock.calls[1][0]).toBeInstanceOf(FeeBumpTransaction);
+    expect(feeStatsSpy).toHaveBeenCalledTimes(1);
+    expect(notifications).toHaveLength(1);
+    expect(notifications[0]).toMatchObject({ baseFee: '1200', attempt: 1 });
+    expect(notifications[0].hash).toBe((sendSpy.mock.calls[1][0] as FeeBumpTransaction).hash().toString('hex'));
+  });
+
+  it('steps the fee up for each retry and stops at maxFeeBump', async () => {
+    const tx = signedTx();
+    const feeSource = Keypair.random();
+    const sendSpy = jest
+      .spyOn(rpc.Server.prototype, 'sendTransaction')
+      .mockResolvedValueOnce(pending('original'))
+      .mockResolvedValueOnce(pending('first-bump'))
+      .mockResolvedValueOnce(pending('second-bump'));
+    jest
+      .spyOn(rpc.Server.prototype, 'getTransaction')
+      .mockResolvedValueOnce(txStatus(rpc.Api.GetTransactionStatus.NOT_FOUND))
+      .mockResolvedValueOnce(txStatus(rpc.Api.GetTransactionStatus.NOT_FOUND))
+      .mockResolvedValueOnce(txStatus(rpc.Api.GetTransactionStatus.SUCCESS, 89));
+    jest
+      .spyOn(rpc.Server.prototype, 'getFeeStats')
+      .mockResolvedValue({
+        latestLedger: 100,
+        inclusionFee: { p90: '500' },
+        sorobanInclusionFee: { p90: '600' },
+      } as unknown as rpc.Api.GetFeeStatsResponse);
+    const notifications: Array<{ baseFee: string; attempt: number }> = [];
+
+    const result = await new TransactionPipeline(makeClient()).submit(tx, {
+      maxAttempts: 1,
+      pollAttempts: 1,
+      pollIntervalMs: 1,
+      feeBump: {
+        feeSource,
+        maxFeeBump: 2,
+        onFeeBump: ({ baseFee, attempt }) => notifications.push({ baseFee, attempt }),
+      },
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.data.hash).toBe('second-bump');
+    expect(sendSpy).toHaveBeenCalledTimes(3);
+    expect(notifications).toEqual([
+      { baseFee: '1200', attempt: 1 },
+      { baseFee: '2400', attempt: 2 },
+    ]);
+  });
+
   it('surfaces a getTransaction failure raised mid-poll', async () => {
     jest.spyOn(rpc.Server.prototype, 'sendTransaction').mockResolvedValue(pending());
     jest

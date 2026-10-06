@@ -7,11 +7,15 @@ import {
 } from '../src/events';
 import { EscrowMonitor, type MonitorGapInfo } from '../src/escrow/monitor';
 
-/** Build the base64 an `SCV_STRING` ScVal decodes to `s`. */
+/** Build a valid XDR `ScVal` for a string value, as Soroban contract events emit. */
 function scStr(s: string): string {
-  return Buffer.concat([Buffer.from([0x0e, 0, 0, 0, s.length]), Buffer.from(s, 'utf8')]).toString(
-    'base64',
-  );
+  const rawLength = 8 + s.length;
+  const paddedLength = rawLength + ((4 - (rawLength % 4)) % 4);
+  const buf = Buffer.alloc(paddedLength);
+  buf.writeUInt32BE(14, 0); // scvString
+  buf.writeUInt32BE(s.length, 4);
+  buf.write(s, 8, 'utf8');
+  return buf.toString('base64');
 }
 
 const CONTRACT_ID = 'CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABSC4';
@@ -172,6 +176,20 @@ describe('EscrowMonitor resilient polling', () => {
     expect(gaps[0].reason).toBe('ledger-discontinuity');
     expect(gaps[0].fromLedger).toBe(30);
     expect(gaps[0].toLedger).toBe(35);
+  });
+
+  it('ignores nullish entries in polling batches without crashing', async () => {
+    const monitor = new EscrowMonitor();
+    const seen: ParsedTrustFlowEvent[] = [];
+    monitor.on('escrow_created', (e) => void seen.push(e));
+    monitor.startPolling(10, async () => [
+      null,
+      parseEvent(raw('ev-x', 'pt-x', 1)),
+    ] as Array<ParsedTrustFlowEvent | null>);
+    await waitFor(() => seen.length >= 1);
+    monitor.stopPolling();
+    expect(seen.length).toBeGreaterThanOrEqual(1);
+    expect(seen.map((e) => e.id)).toContain('ev-x');
   });
 
   it('startPolling stays backward compatible (no cursor arg)', async () => {
